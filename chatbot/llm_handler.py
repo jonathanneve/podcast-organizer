@@ -8,6 +8,7 @@ warnings.filterwarnings(
 )
 
 import torch
+from typing import cast
 from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 
 import config
@@ -57,6 +58,9 @@ class LLMHandler:
         if not context_chunks:
             return ("I don't have any document loaded to answer from.")
         
+        if not self.pipe or not self.tokenizer:
+            raise Exception('LLM pipeline not initialized correctly!')
+
         context = "\n\n".join(context_chunks)
         
         prompt = config.PROMPT_TEMPLATE.format(
@@ -79,8 +83,10 @@ class LLMHandler:
                 return_full_text=False
             )
             
-            response = outputs[0]["generated_text"]
-            
+            raw = outputs[0] if isinstance(outputs, list) else outputs
+            output = cast(dict, raw)
+            response = output["generated_text"]
+
             if isinstance(response, list):
                 response = response[-1].get("content", str(response))
             
