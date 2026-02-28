@@ -4,9 +4,11 @@ import argparse
 import sys
 from typing import Optional
 import asr
+import os
 
 def process_audio_file(path):
-    asr.transcribe_audio_file(path)
+    base_name, _ = os.path.splitext(path)
+    asr.transcribe_audio_file(path, base_name + '.txt')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

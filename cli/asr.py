@@ -12,16 +12,9 @@ warnings.filterwarnings("ignore", message=".*urllib3.*")
 from faster_whisper import WhisperModel
 
 
-def transcribe_audio_file(path):
+def transcribe_audio_file(path, result_path):
     """
-    Transcribe audio file using faster-whisper.
-
-    Model sizes (speed vs accuracy):
-    - tiny: Fastest, lowest accuracy
-    - base: Fast, basic accuracy
-    - small: Good balance
-    - medium: Better accuracy, slower
-    - large-v3: Best accuracy, slowest
+    Transcribe audio file using faster-whisper, and write result to result_path
     """
     model_size = "tiny"
 
@@ -48,4 +41,5 @@ def transcribe_audio_file(path):
 
     # Combine all segments into full text
     text = " ".join([segment.text for segment in segments])
-    print(text)
+    with open(result_path, "w") as f:
+        f.write(text)

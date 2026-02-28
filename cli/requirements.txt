@@ -27,3 +27,5 @@ faster-whisper>=1.0.0
 feedparser>=6.0.11
 
 pyannote.audio==3.1.1
+
+nltk>=3.9.3
