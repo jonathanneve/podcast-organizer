@@ -22,8 +22,8 @@ def segment_text(text):
     # We can now figure out the topic boundaries by calculating the average embeddings
     # across a window of consecutive sentences, and then calculating the cosine similarity of pairs
     # of such windows
-    window_size = 3
-    threshold = 0.3
+    window_size = 5
+    threshold = 0.2
     boundaries = [0]
     for i in range(0, len(sentences) - window_size * 2):
         window1 = embeddings[i : i + window_size].mean(axis=0)
