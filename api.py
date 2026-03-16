@@ -13,6 +13,17 @@ from migrate import run_migrations
 from models import Podcast, Episode
 from rss import get_podcast_info, get_recent_episodes
 
+LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
+LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
+
+formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATEFMT)
+
+logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt=LOG_DATEFMT)
+
+for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
+    for handler in logging.getLogger(name).handlers:
+        handler.setFormatter(formatter)
+
 POLL_INTERVAL = int(os.getenv("POLL_INTERVAL", "3600"))
 
 logger = logging.getLogger(__name__)
