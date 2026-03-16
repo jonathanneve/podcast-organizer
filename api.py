@@ -3,9 +3,11 @@ import logging
 import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from psycopg.rows import dict_row
-from episodes import build_full_summary, get_new_episodes
+from chatbot import DocumentStore, LLMHandler
+from episodes import build_full_summary, get_new_episodes, AUDIO_DIR
 from database import get_db
 from migrate import run_migrations
 from models import Podcast, Episode
@@ -34,6 +36,9 @@ async def poll_new_episodes():
         await asyncio.sleep(POLL_INTERVAL)
 
 
+document_store = DocumentStore()
+llm = LLMHandler()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     run_migrations()
@@ -45,6 +50,9 @@ app = FastAPI(title="Podcast Organizer API", lifespan=lifespan)
 
 class PodcastCreate(BaseModel):
     url: str
+
+class ChatRequest(BaseModel):
+    question: str
 
 @app.get("/podcasts", response_model=list[Podcast])
 def list_podcasts():
@@ -95,7 +103,6 @@ def create_podcast(podcast: PodcastCreate):
 
         return row
 
-
 @app.post("/podcasts/{podcast_id}/more", response_model=list[Episode])
 def fetch_more_episodes(podcast_id: int):
     logger.info("Fetching more episodes for podcast %d", podcast_id)
@@ -132,7 +139,6 @@ def fetch_more_episodes(podcast_id: int):
         logger.debug("Added %d more episodes for podcast %d", len(new_episodes), podcast_id)
         return new_episodes
 
-
 @app.post("/podcasts/{podcast_id}/refresh", response_model=list[Episode])
 def refresh_episodes(podcast_id: int):
     logger.info("Refreshing episodes for podcast %d", podcast_id)
@@ -155,3 +161,48 @@ def refresh_episodes(podcast_id: int):
 
         logger.debug("Found %d new episodes for podcast %d", len(new_episodes), podcast_id)
         return new_episodes
+
+@app.get("/podcasts/{podcast_id}/episodes/{episode_id}/audio")
+def stream_audio(podcast_id: int, episode_id: int):
+    logger.info("Streaming audio for episode %d", episode_id)
+    with get_db() as conn:
+        conn.row_factory = dict_row
+        episode = conn.execute(
+            "SELECT audio_path FROM episodes WHERE id = %s", [episode_id]
+        ).fetchone()
+
+        if not episode:
+            logger.warning("Episode %d not found for podcast %d", episode_id, podcast_id)
+            raise HTTPException(status_code=404, detail="Episode not found")
+
+        audio_path = episode["audio_path"]
+        if not audio_path or not os.path.isfile(audio_path):
+            logger.warning("Audio file %s not found", audio_path)
+            raise HTTPException(status_code=404, detail="Audio file not available")
+
+    return FileResponse(audio_path, media_type="audio/mpeg", filename=f"{episode_id}.mp3")
+
+@app.post("/podcasts/{podcast_id}/episodes/{episode_id}/chat")
+def chat_about_episode(podcast_id: int, episode_id: int, request: ChatRequest):
+    logger.info("Chat question for episode %d: %s", episode_id, request.question)
+    with get_db() as conn:
+        conn.row_factory = dict_row
+        episode = conn.execute(
+            "SELECT transcript FROM episodes WHERE id = %s AND podcast_id = %s",
+            [episode_id, podcast_id],
+        ).fetchone()
+
+        if not episode:
+            logger.warning("Episode %d not found for podcast %d", episode_id, podcast_id)
+            raise HTTPException(status_code=404, detail="Episode not found")
+
+        if not episode["transcript"]:
+            logger.warning("Episode %d of podcast %d has not been analyzed yet", episode_id, podcast_id)
+            raise HTTPException(status_code=400, detail="Episode has not been analyzed yet")
+
+    document_store.load_text(episode["transcript"])
+    relevant_chunks = document_store.find_relevant_chunks(request.question)
+    answer = llm.generate_response(request.question, relevant_chunks)
+
+    logger.debug("Chat answer for episode %d: %s", episode_id, answer[:100])
+    return {"answer": answer}
