@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from psycopg.rows import dict_row
-from core import build_full_summary, get_new_episodes
+from episodes import build_full_summary, get_new_episodes
 from database import get_db
 from migrate import run_migrations
 from models import Podcast, Episode

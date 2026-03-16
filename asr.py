@@ -1,7 +1,5 @@
 import os
 import warnings
-import subprocess
-import tempfile
 
 # Fix OpenMP library conflict on macOS
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
@@ -10,7 +8,6 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 warnings.filterwarnings("ignore", message=".*urllib3.*")
 
 from faster_whisper import WhisperModel
-
 
 def transcribe_audio_file(path, result_path):
     """

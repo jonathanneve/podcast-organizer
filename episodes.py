@@ -3,17 +3,12 @@ import os
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import cast
-
-logger = logging.getLogger(__name__)
-
 from psycopg import Connection
 from psycopg.rows import DictRow
-
 from rss import download_episode, get_recent_episodes
-from cli.asr import transcribe_audio_file
-from cli.topic_segmentation import segment_text
-from cli.summarize import summarize_text
+from pipeline import segment_text, summarize_text, transcribe_audio_file
 
+logger = logging.getLogger(__name__)
 
 def get_new_episodes(conn: Connection[DictRow], podcast_id: int, feed_url: str):
     """
