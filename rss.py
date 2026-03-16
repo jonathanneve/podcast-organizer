@@ -43,6 +43,18 @@ def get_recent_episodes(feed_url: str, n: int = 10, skip: int = 0) -> list[dict]
     return episodes
 
 
+def download_episode(audio_url: str, output_path: str):
+    """
+    Downloads an episode audio file from a direct URL to the given path.
+    """
+    os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
+    with requests.get(audio_url, stream=True) as r:
+        r.raise_for_status()
+        with open(output_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+
 def download_latest_episode(feed_url: str, output_dir: str = ".") -> dict:
     """
     Downloads the audio file from the latest episode of a podcast RSS feed.
