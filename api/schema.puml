@@ -1,0 +1,39 @@
+@startuml
+
+entity podcasts {
+    * id : SERIAL <<PK>>
+    --
+    * url : TEXT
+    * title : TEXT
+    description : TEXT
+    subscribed_at : TIMESTAMP
+}
+
+entity episodes {
+    * id : SERIAL <<PK>>
+    --
+    * podcast_id : INTEGER <<FK>>
+    * url : TEXT
+    description : TEXT
+    summary : TEXT
+    transcript : TEXT
+    audio_path : TEXT
+    duration_seconds : INTEGER
+    * status : TEXT {available, analyzing, ready}
+}
+
+entity episode_segments {
+    * id : SERIAL <<PK>>
+    --
+    * episode_id : INTEGER <<FK>>
+    * start_time : INTEGER
+    * end_time : INTEGER
+    transcript : TEXT
+    summary : TEXT
+    topic : TEXT
+}
+
+podcasts ||--o{ episodes
+episodes ||--o{ episode_segments
+
+@enduml
