@@ -3,6 +3,7 @@ CREATE TABLE podcasts (
     url TEXT NOT NULL,
     title TEXT NOT NULL,
     description TEXT,
+    image_url TEXT,
     subscribed_at TIMESTAMP DEFAULT now()
 );
 
@@ -11,6 +12,7 @@ CREATE TABLE episodes (
     podcast_id INTEGER NOT NULL REFERENCES podcasts(id),
     url TEXT NOT NULL,
     description TEXT,
+    image_url TEXT,
     summary TEXT,
     transcript TEXT,
     audio_path TEXT,

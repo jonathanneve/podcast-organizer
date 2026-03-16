@@ -6,6 +6,7 @@ entity podcasts {
     * url : TEXT
     * title : TEXT
     description : TEXT
+    image_url : TEXT
     subscribed_at : TIMESTAMP
 }
 
@@ -15,6 +16,7 @@ entity episodes {
     * podcast_id : INTEGER <<FK>>
     * url : TEXT
     description : TEXT
+    image_url : TEXT
     summary : TEXT
     transcript : TEXT
     audio_path : TEXT
