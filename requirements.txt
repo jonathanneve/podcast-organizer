@@ -3,3 +3,10 @@ uvicorn
 psycopg[binary,pool]
 feedparser
 requests
+nltk
+numpy
+sentence-transformers
+scikit-learn
+transformers
+faster-whisper
+torch
