@@ -6,13 +6,13 @@ import threading
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
 from psycopg.rows import dict_row
 from chatbot import DocumentStore, LLMHandler
 from episodes import analyze_episode, build_full_summary, get_new_episodes, AUDIO_DIR
 from database import get_db
 from migrate import run_migrations
-from models import Podcast, Episode
+import requests as http_requests
+from models import ChatRequest, Podcast, PodcastCreate, PodcastSearchResult, Episode
 from rss import get_podcast_info, get_recent_episodes
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s: %(message)s"
@@ -62,11 +62,33 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Podcast Organizer API", lifespan=lifespan)
 
-class PodcastCreate(BaseModel):
-    url: str
+@app.get("/search", response_model=list[PodcastSearchResult])
+def search_podcasts(q: str):
+    logger.info("Searching podcasts for: %s", q)
+    resp = http_requests.get(
+        "https://itunes.apple.com/search",
+        params={"term": q, "media": "podcast", "entity": "podcast"},
+        timeout=10,
+    )
+    resp.raise_for_status()
+    results = resp.json().get("results", [])
+    logger.debug("Found %d results for query: %s", len(results), q)
+    return [
+        PodcastSearchResult(
+            name=r.get("collectionName"),
+            artist=r.get("artistName"),
+            description=r.get("description") or r.get("collectionName"),
+            image_url=r.get("artworkUrl600") or r.get("artworkUrl100"),
+            feed_url=r.get("feedUrl"),
+            genre=r.get("primaryGenreName"),
+            track_count=r.get("trackCount"),
+            country=r.get("country"),
+            content_advisory_rating=r.get("contentAdvisoryRating"),
+            release_date=r.get("releaseDate"),
+        )
+        for r in results
+    ]
 
-class ChatRequest(BaseModel):
-    question: str
 
 @app.get("/podcasts", response_model=list[Podcast])
 def list_podcasts():
