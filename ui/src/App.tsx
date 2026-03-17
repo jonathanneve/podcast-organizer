@@ -26,23 +26,23 @@ export default function App() {
   return (
     <div className="app">
       <aside className="sidebar">
-        <h2 className="sidebar__title">Podcasts</h2>
+        <h2 className="title">Podcasts</h2>
         {podcasts.length === 0 && (
-          <p className="sidebar__empty">No subscriptions yet.</p>
+          <p className="empty">No subscriptions yet.</p>
         )}
-        <ul className="sidebar__list">
+        <ul className="list">
           {podcasts.map((p) => (
             <li
               key={p.id}
-              className={`sidebar__item${p.id === selectedId ? " sidebar__item--selected" : ""}`}
+              className={`item${p.id === selectedId ? " item--selected" : ""}`}
               onClick={() => setSelectedId(p.id)}
             >
               {p.image_url ? (
-                <img src={p.image_url} alt="" className="sidebar__thumb" />
+                <img src={p.image_url} alt="" className="thumb" />
               ) : (
-                <div className="sidebar__thumb--placeholder" />
+                <div className="thumb--placeholder" />
               )}
-              <span className="sidebar__item-title">{p.title}</span>
+              <span className="item-title">{p.title}</span>
             </li>
           ))}
         </ul>
@@ -56,13 +56,13 @@ export default function App() {
               <img
                 src={selected.image_url}
                 alt={selected.title}
-                className="main__hero-image"
+                className="hero-image"
               />
             )}
             {selected.description && <p>{selected.description}</p>}
           </div>
         ) : (
-          <p className="main__placeholder">
+          <p className="placeholder">
             Select a podcast from the sidebar to view details.
           </p>
         )}
