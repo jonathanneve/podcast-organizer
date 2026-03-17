@@ -11,13 +11,13 @@ services:
       - pgdata:/var/lib/postgresql/data
 
   api:
-    build: .
+    build: ./server
     ports:
       - "8000:8000"
     environment:
       DATABASE_URL: postgresql://postgres:postgres@db:5432/podcast_organizer
     volumes:
-      - .:/app
+      - ./server:/app
     command: uvicorn api:app --host 0.0.0.0 --port 8000 --reload
     depends_on:
       - db
