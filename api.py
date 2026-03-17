@@ -1,13 +1,15 @@
 import asyncio
 import logging
 import os
+import threading
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from psycopg.rows import dict_row
 from chatbot import DocumentStore, LLMHandler
-from episodes import build_full_summary, get_new_episodes, AUDIO_DIR
+from episodes import analyze_episode, build_full_summary, get_new_episodes, AUDIO_DIR
 from database import get_db
 from migrate import run_migrations
 from models import Podcast, Episode
@@ -19,6 +21,7 @@ LOG_DATEFMT = "%Y-%m-%d %H:%M:%S"
 formatter = logging.Formatter(LOG_FORMAT, datefmt=LOG_DATEFMT)
 
 logging.basicConfig(level=logging.INFO, format=LOG_FORMAT, datefmt=LOG_DATEFMT)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 for name in ("uvicorn", "uvicorn.error", "uvicorn.access"):
     for handler in logging.getLogger(name).handlers:
@@ -172,6 +175,39 @@ def refresh_episodes(podcast_id: int):
 
         logger.debug("Found %d new episodes for podcast %d", len(new_episodes), podcast_id)
         return new_episodes
+
+@app.post("/podcasts/{podcast_id}/episodes/{episode_id}/analyze")
+def analyze(podcast_id: int, episode_id: int):
+    logger.info("Analyzing episode %d of podcast %d", episode_id, podcast_id)
+    with get_db() as conn:
+        conn.row_factory = dict_row
+        episode = conn.execute(
+            "SELECT status FROM episodes WHERE id = %s AND podcast_id = %s",
+            [episode_id, podcast_id],
+        ).fetchone()
+
+        if not episode:
+            raise HTTPException(status_code=404, detail="Episode not found")
+
+        if episode["status"] != "available":
+            raise HTTPException(status_code=409, detail=f"Episode is already {episode['status']}")
+
+        conn.execute(
+            "UPDATE episodes SET status = 'analyzing' WHERE id = %s",
+            [episode_id],
+        )
+
+    def _run():
+        try:
+            with get_db() as bg_conn:
+                bg_conn.row_factory = dict_row
+                analyze_episode(bg_conn, episode_id)
+        except Exception:
+            logger.exception("Background analysis failed for episode %d", episode_id)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+    return {"status": "ok"}
 
 @app.get("/podcasts/{podcast_id}/episodes/{episode_id}/audio")
 def stream_audio(podcast_id: int, episode_id: int):

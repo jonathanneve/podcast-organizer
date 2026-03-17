@@ -83,21 +83,26 @@ def analyze_episode(conn: Connection[DictRow], episode_id: int):
         if not episode:
             raise ValueError(f"Episode {episode_id} not found")
 
-        # 2. Download and transcribe
-        logger.info("Episode %d: downloading and transcribing audio", episode_id)
-        audio_path, transcript = _download_and_transcribe(episode["url"], episode_id)
-        logger.info("Episode %d: transcription complete (%d characters)", episode_id, len(transcript))
-
-        # 3. Segment the transcript into topics
-        segments = segment_text(transcript)
-        logger.info("Episode %d: segmented into %d topics", episode_id, len(segments))
-
-        # 4. Summarize each segment in parallel threads, plus the overall summary
-        segment_results: list[dict] = [{}] * len(segments)
-        overall_summary = ""
-
-        logger.info("Episode %d: summarizing %d segments in parallel", episode_id, len(segments))
         with ThreadPoolExecutor() as executor:
+            # 2. Download and transcribe in a background thread
+            logger.info("Episode %d: downloading and transcribing audio", episode_id)
+            transcribe_future = executor.submit(
+                _download_and_transcribe, episode["url"], episode_id
+            )
+
+            audio_path, transcript = transcribe_future.result()
+            logger.info("Episode %d: transcription complete (%d characters)", episode_id, len(transcript))
+
+            # 3. Segment the transcript into topics
+            segments = segment_text(transcript)
+            logger.info("Episode %d: segmented into %d topics", episode_id, len(segments))
+
+            # 4. Summarize each segment in parallel threads, plus the overall summary
+            segment_results: list[dict] = [{}] * len(segments)
+            overall_summary = ""
+
+            logger.info("Episode %d: summarizing %d segments in parallel", episode_id, len(segments))
+
             # Submit segment summarization tasks
             segment_futures = {
                 executor.submit(_summarize_segment, seg): i
