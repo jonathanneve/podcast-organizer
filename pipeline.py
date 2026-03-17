@@ -81,7 +81,28 @@ def segment_text(text):
     segments = [" ".join(sentences[start:end]) for start, end in segments_boundaries]
     return segments
 
+_bart_tokenizer = None
+_bart_model = None
+
+def _get_bart_model():
+    from transformers import BartTokenizer, BartForConditionalGeneration
+    global _bart_tokenizer, _bart_model
+    if _bart_tokenizer is None:
+        _bart_tokenizer = BartTokenizer.from_pretrained("philschmid/bart-large-cnn-samsum")
+        _bart_model = BartForConditionalGeneration.from_pretrained("philschmid/bart-large-cnn-samsum")
+    assert _bart_tokenizer is not None and _bart_model is not None
+    return _bart_tokenizer, _bart_model
+
 def summarize_text(full_text: str, min_length = 15, max_length=60):
-    summarizer = pipeline("summarization", model="philschmid/bart-large-cnn-samsum")
-    summary = summarizer(full_text, max_length=max_length, min_length=min_length, truncation=True)
-    return summary
+    tokenizer, model = _get_bart_model()
+
+    inputs = tokenizer(full_text, return_tensors="pt", truncation=True, max_length=1024)
+    summary_ids = model.generate(
+        inputs["input_ids"],
+        max_length=max_length,
+        min_length=min_length,
+        num_beams=4,
+        length_penalty=2.0,
+    )
+    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+    return [{"summary_text": summary}]
