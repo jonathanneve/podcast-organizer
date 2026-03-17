@@ -36,6 +36,7 @@ class Episode(BaseModel):
     id: int
     podcast_id: int
     url: str
+    title: str | None = None
     description: str | None = None
     summary: str | None = None
     transcript: str | None = None

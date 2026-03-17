@@ -114,6 +114,17 @@ def list_episodes(podcast_id: int):
         logger.debug("Returning %d episodes for podcast %d", len(episodes), podcast_id)
         return episodes
 
+@app.delete("/podcasts/{podcast_id}", status_code=204)
+def delete_podcast(podcast_id: int):
+    logger.info("Deleting podcast %d", podcast_id)
+    with get_db() as conn:
+        conn.execute("DELETE FROM episode_segments WHERE episode_id IN (SELECT id FROM episodes WHERE podcast_id = %s)", [podcast_id])
+        conn.execute("DELETE FROM episodes WHERE podcast_id = %s", [podcast_id])
+        result = conn.execute("DELETE FROM podcasts WHERE id = %s", [podcast_id])
+        if result.rowcount == 0:
+            raise HTTPException(status_code=404, detail="Podcast not found")
+
+
 @app.post("/podcasts", status_code=201, response_model=Podcast)
 def create_podcast(podcast: PodcastCreate):
     logger.info("Creating podcast from feed: %s", podcast.url)
@@ -132,8 +143,8 @@ def create_podcast(podcast: PodcastCreate):
         if row:
             for ep in episodes:
                 conn.execute(
-                    "INSERT INTO episodes (podcast_id, url, description, image_url) VALUES (%s, %s, %s, %s)",
-                    [row["id"], ep["url"], ep["description"], ep["image_url"]],
+                    "INSERT INTO episodes (podcast_id, url, title, description, image_url) VALUES (%s, %s, %s, %s, %s)",
+                    [row["id"], ep["url"], ep["title"], ep["description"], ep["image_url"]],
                 )
             logger.debug("Created podcast %d with %d episodes", row["id"], len(episodes))
 
@@ -156,9 +167,9 @@ def fetch_more_episodes(podcast_id: int):
         get_new_episodes(conn, podcast_id, podcast["url"])
 
         count_row = conn.execute(
-            "SELECT COUNT(*) FROM episodes WHERE podcast_id = %s", [podcast_id]
+            "SELECT COUNT(*) AS cnt FROM episodes WHERE podcast_id = %s", [podcast_id]
         ).fetchone()
-        current_count = count_row[0] if count_row else 0
+        current_count = count_row["cnt"] if count_row else 0
 
         logger.debug("Fetching the 10 latest episodes of podcast %d", podcast_id)
         candidates = get_recent_episodes(podcast["url"], n=10, skip=current_count)
@@ -166,8 +177,8 @@ def fetch_more_episodes(podcast_id: int):
         new_episodes = []
         for ep in candidates:
             row = conn.execute(
-                "INSERT INTO episodes (podcast_id, url, description, image_url) VALUES (%s, %s, %s, %s) RETURNING *",
-                [podcast_id, ep["url"], ep["description"], ep["image_url"]],
+                "INSERT INTO episodes (podcast_id, url, title, description, image_url) VALUES (%s, %s, %s, %s, %s) RETURNING *",
+                [podcast_id, ep["url"], ep["title"], ep["description"], ep["image_url"]],
             ).fetchone()
             if row:
                 new_episodes.append(row)
