@@ -3,3 +3,4 @@
 .vscode
 *.mp3
 __pycache__
+ui/node_modules

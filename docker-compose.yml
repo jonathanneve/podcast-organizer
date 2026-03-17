@@ -22,5 +22,15 @@ services:
     depends_on:
       - db
 
+  ui:
+    build: ./ui
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./ui:/app
+      - /app/node_modules
+    depends_on:
+      - api
+
 volumes:
   pgdata:
