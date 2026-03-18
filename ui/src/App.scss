@@ -125,6 +125,13 @@ $thumb-size: 100px;
   padding: 24px;
   overflow-y: auto;
 
+  &--narrow {
+    flex: none;
+    width: 25vw;
+    min-width: 280px;
+    border-right: 1px solid $border-color;
+  }
+
   .hero-image {
     max-width: 200px;
     border-radius: 8px;
@@ -152,6 +159,13 @@ $thumb-size: 100px;
   .episode {
     padding: 12px 0;
     border-bottom: 1px solid $border-color-light;
+    cursor: pointer;
+
+    &--selected {
+      background: #e8f0fe;
+      margin: 0 -24px;
+      padding: 12px 24px;
+    }
   }
 
   .episode-info {
@@ -197,7 +211,7 @@ $thumb-size: 100px;
     background: #eee;
     color: $text-muted;
 
-    &--analyzed {
+    &--analyzed, &--ready {
       background: #dcfce7;
       color: #166534;
     }
@@ -228,4 +242,9 @@ $thumb-size: 100px;
       cursor: not-allowed;
     }
   }
+}
+
+.episode-panel {
+  flex: 1;
+  overflow: hidden;
 }

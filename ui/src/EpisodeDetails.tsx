@@ -1,0 +1,178 @@
+import { useState } from "react";
+import DOMPurify from "dompurify";
+
+DOMPurify.addHook("afterSanitizeAttributes", (node) => {
+  if (node.tagName === "A") {
+    node.setAttribute("target", "_blank");
+    node.setAttribute("rel", "noopener noreferrer");
+  }
+});
+
+function linkifyAndSanitize(html: string): string {
+  const sanitized = DOMPurify.sanitize(html, { ADD_ATTR: ["target"] });
+  // Convert plain-text URLs not already inside an <a> tag into clickable links
+  return sanitized.replace(
+    /(?<!href=["'])(?<!>)(https?:\/\/[^\s<]+)/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>'
+  );
+}
+import ChatPanel from "./ChatPanel";
+import "./EpisodeDetails.scss";
+
+interface Episode {
+  id: number;
+  podcast_id: number;
+  url: string;
+  title: string | null;
+  description: string | null;
+  summary: string | null;
+  image_url: string | null;
+  status: string;
+  full_summary: string | null;
+  audio_path: string | null;
+}
+
+interface Props {
+  episode: Episode;
+  onStatusChange: () => void;
+}
+
+export default function EpisodeDetails({ episode, onStatusChange }: Props) {
+  const [analyzing, setAnalyzing] = useState(false);
+
+  const audioUrl = `/podcasts/${episode.podcast_id}/episodes/${episode.id}/audio`;
+  const isAnalyzed = episode.status === "analyzed" || episode.status === "ready";
+  const isAnalyzing = episode.status === "analyzing";
+
+  const startAnalysis = async () => {
+    setAnalyzing(true);
+    try {
+      const resp = await fetch(
+        `/podcasts/${episode.podcast_id}/episodes/${episode.id}/analyze`,
+        { method: "POST" }
+      );
+      if (resp.ok) {
+        onStatusChange();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const resetEpisode = async () => {
+    try {
+      const resp = await fetch(
+        `/podcasts/${episode.podcast_id}/episodes/${episode.id}/reset`,
+        { method: "POST" }
+      );
+      if (resp.ok) {
+        onStatusChange();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const reanalyze = async () => {
+    try {
+      await fetch(
+        `/podcasts/${episode.podcast_id}/episodes/${episode.id}/reset`,
+        { method: "POST" }
+      );
+      const resp = await fetch(
+        `/podcasts/${episode.podcast_id}/episodes/${episode.id}/analyze`,
+        { method: "POST" }
+      );
+      if (resp.ok) {
+        onStatusChange();
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  return (
+    <div className="episode-details-panel">
+      <div className="top-section">
+        <div className="top-row">
+          {episode.image_url && (
+            <img src={episode.image_url} alt="" className="ep-image" />
+          )}
+          <div className="ep-title-row">
+            <h2 className="ep-title">{episode.title || `Episode ${episode.id}`}</h2>
+            <span className={`ep-status ep-status--${episode.status}`}>
+              {episode.status}
+            </span>
+          </div>
+          {episode.audio_path && (
+            <audio key={episode.id} controls className="audio-player">
+              <source src={audioUrl} type="audio/mpeg" />
+            </audio>
+          )}
+          {isAnalyzed && (
+            <button className="reanalyze-btn" onClick={reanalyze} title="Re-analyze episode">
+              ↻
+            </button>
+          )}
+        </div>
+        {episode.description && (
+          <div
+            className="ep-description"
+            dangerouslySetInnerHTML={{
+              __html: linkifyAndSanitize(episode.description),
+            }}
+          />
+        )}
+      </div>
+
+      {isAnalyzed ? (
+        <div className="bottom-section">
+          <div className="summary-panel">
+            <h3>Summary</h3>
+            {episode.full_summary ? (
+              <div className="summary-content">{episode.full_summary}</div>
+            ) : (
+              <p className="no-summary">No summary available.</p>
+            )}
+          </div>
+
+          <ChatPanel podcastId={episode.podcast_id} episodeId={episode.id} />
+        </div>
+      ) : (
+        <div className="analyze-prompt">
+          {isAnalyzing ? (
+            <>
+              <div className="analyze-spinner" />
+              <h3>Analysis in progress...</h3>
+              <p>
+                The episode is being downloaded, transcribed, and summarized.
+                This may take several minutes depending on the episode length.
+              </p>
+              <button className="abort-btn" onClick={resetEpisode}>
+                Abort Analysis
+              </button>
+            </>
+          ) : (
+            <>
+              <h3>This episode hasn't been analyzed yet</h3>
+              <p>
+                Analyze the episode to generate a transcript, summary, and enable
+                the chat feature. This will download the audio, transcribe it,
+                and break it into topic segments.
+              </p>
+              <button
+                className="analyze-btn"
+                onClick={startAnalysis}
+                disabled={analyzing}
+              >
+                {analyzing ? "Starting..." : "Analyze Episode"}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

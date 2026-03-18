@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import DOMPurify from "dompurify";
 import AddPodcastDialog from "./AddPodcastDialog";
+import EpisodeDetails from "./EpisodeDetails";
 import "./App.scss";
 
 function sanitizeHtml(html: string): string {
@@ -24,13 +25,16 @@ interface Episode {
   description: string | null;
   summary: string | null;
   image_url: string | null;
+  audio_path: string | null;
   status: string;
+  full_summary: string | null;
 }
 
 export default function App() {
   const [podcasts, setPodcasts] = useState<Podcast[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [selectedEpisodeId, setSelectedEpisodeId] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
 
@@ -41,6 +45,14 @@ export default function App() {
       .catch(console.error);
   };
 
+  const fetchEpisodes = () => {
+    if (!selectedId) return;
+    fetch(`/podcasts/${selectedId}/episodes`)
+      .then((r) => r.json())
+      .then(setEpisodes)
+      .catch(console.error);
+  };
+
   useEffect(() => {
     fetchPodcasts();
   }, []);
@@ -48,13 +60,25 @@ export default function App() {
   useEffect(() => {
     if (selectedId === null) {
       setEpisodes([]);
+      setSelectedEpisodeId(null);
       return;
     }
-    fetch(`/podcasts/${selectedId}/episodes`)
-      .then((r) => r.json())
-      .then(setEpisodes)
-      .catch(console.error);
+    setSelectedEpisodeId(null);
+    fetchEpisodes();
   }, [selectedId]);
+
+  const [selectedEpisodeDetails, setSelectedEpisodeDetails] = useState<Episode | null>(null);
+
+  useEffect(() => {
+    if (selectedEpisodeId === null || selectedId === null) {
+      setSelectedEpisodeDetails(null);
+      return;
+    }
+    fetch(`/podcasts/${selectedId}/episodes/${selectedEpisodeId}`)
+      .then((r) => r.json())
+      .then(setSelectedEpisodeDetails)
+      .catch(console.error);
+  }, [selectedEpisodeId]);
 
   const fetchMoreEpisodes = async () => {
     if (!selectedId) return;
@@ -122,7 +146,7 @@ export default function App() {
         </div>
       </aside>
 
-      <main className="main">
+      <main className={`main${selectedEpisodeDetails ? " main--narrow" : ""}`}>
         {selected ? (
           <div>
             <h1>{selected.title}</h1>
@@ -141,7 +165,11 @@ export default function App() {
             ) : (
               <ul className="episode-list">
                 {episodes.map((ep) => (
-                  <li key={ep.id} className="episode">
+                  <li
+                    key={ep.id}
+                    className={`episode${ep.id === selectedEpisodeId ? " episode--selected" : ""}`}
+                    onClick={() => setSelectedEpisodeId(ep.id)}
+                  >
                     <div className="episode-info">
                       {ep.image_url && (
                         <img
@@ -185,6 +213,23 @@ export default function App() {
           </p>
         )}
       </main>
+
+      {selectedEpisodeDetails && (
+        <section className="episode-panel">
+          <EpisodeDetails
+            episode={selectedEpisodeDetails}
+            onStatusChange={() => {
+              fetchEpisodes();
+              if (selectedId && selectedEpisodeId) {
+                fetch(`/podcasts/${selectedId}/episodes/${selectedEpisodeId}`)
+                  .then((r) => r.json())
+                  .then(setSelectedEpisodeDetails)
+                  .catch(console.error);
+              }
+            }}
+          />
+        </section>
+      )}
 
       <AddPodcastDialog
         open={dialogOpen}
