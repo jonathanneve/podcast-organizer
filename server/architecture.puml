@@ -1,0 +1,56 @@
+@startuml
+title Podcast Organizer – Architecture
+
+skinparam rectangle {
+  RoundCorner 15
+}
+skinparam component {
+  RoundCorner 10
+}
+
+actor User
+
+rectangle "Frontend (React)" as UI {
+  component "Podcast &\nEpisode panels" as panels
+  component "Episode details\n& Chat" as detailchat
+}
+
+User -down-> UI
+
+together {
+  rectangle "Backend (Python)" as API {
+    component "REST\nEndpoints" as rest
+    component "Analysis\nThread" as analysis
+    component "RSS Parser\n& Poller" as rss
+  }
+
+  database "PostgreSQL 17" as DB
+}
+
+UI -down-> rest : HTTP proxy
+rest -down-> analysis : Analyze episode
+rest -right-> DB
+analysis -right-> DB : Store results\n+ embeddings
+
+cloud "External" as EXT {
+  component "iTunes API" as itunes
+  component "RSS Feeds" as feeds
+}
+
+rest -left-> itunes
+rss -left-> feeds
+
+rectangle "ML Pipeline" as ML {
+  component "Whisper\nSpeech-to-Text" as whisper
+  component "Embeddings" as embeddings
+  component "Summarization" as bart
+  component "Chat LLM" as llm
+}
+
+analysis -down-> whisper
+analysis -down-> embeddings : Segment +\nchat embeddings
+analysis -down-> bart
+rest -down-> embeddings : Embed question
+rest -down-> llm : Generate answer
+
+@enduml

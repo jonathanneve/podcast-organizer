@@ -1,0 +1,62 @@
+@startuml
+title Episode Analysis & Chat Pipeline
+
+|Analysis|
+start
+:User clicks "Analyze Episode";
+
+:Download MP3 from RSS feed URL
+-> audio/{episode_id}.mp3;
+
+:Transcribe with <b>OpenAI Whisper</b>
+-> full transcript text;
+
+:Split transcript into sentences
+using <b>NLTK</b> sent_tokenize;
+
+:Compute sentence embeddings,
+group into <b>topic segments</b> via
+sliding-window cosine similarity;
+
+fork
+  :Summarize each segment
+  -> topic title and full topic summary;
+fork again
+  :Summarize full transcript
+  -> full episode summary;
+end fork
+
+:Pre-compute <b>chat embeddings</b>:
+chunk transcript and calculate embeddings for each chunk;
+
+:Store in DB:
+- episodes: transcript, summary,
+  audio file path, duration, <b>chunks (JSON)</b>,
+  <b>chunk_embeddings (binary)</b>
+- episode_segments: per-segment
+  topic + summary + transcript;
+
+stop
+
+|Chat|
+start
+:User asks a question;
+
+:Load <b>pre-computed</b> chunks +
+embeddings from DB;
+
+:Calculate embedding for the <b>question</b>;
+
+:Rank chunks by cosine similarity,
+pick <b>top 3</b>;
+
+:Prompt <b>LLM model</b>:
+"Answer based ONLY on this context:
+{top 3 chunks}";
+
+:Return answer, persist both
+messages to episode_chat;
+
+stop
+
+@enduml
