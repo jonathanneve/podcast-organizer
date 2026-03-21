@@ -33,8 +33,8 @@ def get_new_episodes(conn: Connection[DictRow], podcast_id: int, feed_url: str):
 AUDIO_DIR = os.getenv("AUDIO_DIR", "audio")
 
 
-def _download_and_transcribe(audio_url: str, episode_id: int) -> tuple[str, str]:
-    """Downloads episode audio to a persistent directory, transcribes it, and returns (audio_path, transcript)."""
+def _download_and_transcribe(audio_url: str, episode_id: int) -> tuple[str, str, int]:
+    """Downloads episode audio to a persistent directory, transcribes it, and returns (audio_path, transcript, duration_seconds)."""
     os.makedirs(AUDIO_DIR, exist_ok=True)
     audio_path = os.path.join(AUDIO_DIR, f"{episode_id}.mp3")
 
@@ -44,13 +44,13 @@ def _download_and_transcribe(audio_url: str, episode_id: int) -> tuple[str, str]
         transcript_path = tmp.name
 
     try:
-        transcribe_audio_file(audio_path, transcript_path)
+        duration_seconds = transcribe_audio_file(audio_path, transcript_path)
         with open(transcript_path, "r") as f:
             transcript = f.read()
     finally:
         os.unlink(transcript_path)
 
-    return audio_path, transcript
+    return audio_path, transcript, duration_seconds
 
 
 def _summarize_segment(segment_text_content: str) -> dict:
@@ -90,7 +90,7 @@ def analyze_episode(conn: Connection[DictRow], episode_id: int):
                 _download_and_transcribe, episode["url"], episode_id
             )
 
-            audio_path, transcript = transcribe_future.result()
+            audio_path, transcript, duration_seconds = transcribe_future.result()
             logger.info("Episode %d: transcription complete (%d characters)", episode_id, len(transcript))
 
             # 3. Segment the transcript into topics
@@ -136,8 +136,8 @@ def analyze_episode(conn: Connection[DictRow], episode_id: int):
 
         # 6. Update the episode with transcript and summary
         conn.execute(
-            "UPDATE episodes SET audio_path = %s, transcript = %s, summary = %s, status = 'ready' WHERE id = %s",
-            [audio_path, transcript, overall_summary, episode_id],
+            "UPDATE episodes SET audio_path = %s, transcript = %s, summary = %s, duration_seconds = %s, status = 'ready' WHERE id = %s",
+            [audio_path, transcript, overall_summary, duration_seconds, episode_id],
         )
         conn.commit()
         logger.info("Episode %d: analysis complete, status set to ready", episode_id)

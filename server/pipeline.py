@@ -17,9 +17,10 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 # Suppress urllib3 OpenSSL warning (LibreSSL vs OpenSSL on macOS)
 warnings.filterwarnings("ignore", message=".*urllib3.*")
 
-def transcribe_audio_file(path, result_path):
+def transcribe_audio_file(path, result_path) -> int:
     """
-    Transcribe audio file using faster-whisper, and write result to result_path
+    Transcribe audio file using faster-whisper, and write result to result_path.
+    Returns the duration in seconds.
     """
     model_size = "tiny"
 
@@ -48,6 +49,8 @@ def transcribe_audio_file(path, result_path):
     text = " ".join([segment.text for segment in segments])
     with open(result_path, "w") as f:
         f.write(text)
+
+    return int(info.duration)
 
 def segment_text(text):
     # First, let's split up the text into individual sentences

@@ -99,6 +99,11 @@ def list_podcasts():
         logger.debug("Returning %d podcasts", len(podcasts))
         return podcasts
 
+def _enrich_episode(conn, episode: dict) -> dict:
+    if episode['status'] in ('analyzed', 'ready'):
+        episode["full_summary"] = build_full_summary(conn, episode["id"])
+    return episode
+
 @app.get("/podcasts/{podcast_id}/episodes", response_model=list[Episode])
 def list_episodes(podcast_id: int):
     logger.info("Listing episodes for podcast %d", podcast_id)
@@ -108,11 +113,22 @@ def list_episodes(podcast_id: int):
             "SELECT * FROM episodes WHERE podcast_id = %s ORDER BY id",
             [podcast_id],
         ).fetchall()
-        for episode in episodes:
-            if episode['status'] == 'analyzed':
-                episode["full_summary"] = build_full_summary(conn, episode["id"])
         logger.debug("Returning %d episodes for podcast %d", len(episodes), podcast_id)
-        return episodes
+        return [_enrich_episode(conn, ep) for ep in episodes]
+
+@app.get("/podcasts/{podcast_id}/episodes/{episode_id}", response_model=Episode)
+def get_episode(podcast_id: int, episode_id: int):
+    logger.info("Getting episode %d of podcast %d", episode_id, podcast_id)
+    with get_db() as conn:
+        conn.row_factory = dict_row
+        episode = conn.execute(
+            "SELECT * FROM episodes WHERE id = %s AND podcast_id = %s",
+            [episode_id, podcast_id],
+        ).fetchone()
+        if not episode:
+            raise HTTPException(status_code=404, detail="Episode not found")
+        return _enrich_episode(conn, episode)
+
 
 @app.delete("/podcasts/{podcast_id}", status_code=204)
 def delete_podcast(podcast_id: int):
@@ -242,6 +258,36 @@ def analyze(podcast_id: int, episode_id: int):
 
     return {"status": "ok"}
 
+@app.post("/podcasts/{podcast_id}/episodes/{episode_id}/reset")
+def reset_episode(podcast_id: int, episode_id: int):
+    logger.info("Resetting episode %d of podcast %d", episode_id, podcast_id)
+    with get_db() as conn:
+        conn.row_factory = dict_row
+        episode = conn.execute(
+            "SELECT status FROM episodes WHERE id = %s AND podcast_id = %s",
+            [episode_id, podcast_id],
+        ).fetchone()
+
+        if not episode:
+            raise HTTPException(status_code=404, detail="Episode not found")
+
+        if episode["status"] == "available":
+            raise HTTPException(status_code=409, detail="Episode is already available")
+
+        conn.execute(
+            "DELETE FROM episode_segments WHERE episode_id = %s", [episode_id]
+        )
+        conn.execute(
+            "DELETE FROM episode_chat WHERE episode_id = %s", [episode_id]
+        )
+        conn.execute(
+            "UPDATE episodes SET status = 'available', transcript = NULL, summary = NULL, audio_path = NULL, duration_seconds = NULL WHERE id = %s",
+            [episode_id],
+        )
+
+    return {"status": "ok"}
+
+
 @app.get("/podcasts/{podcast_id}/episodes/{episode_id}/audio")
 def stream_audio(podcast_id: int, episode_id: int):
     logger.info("Streaming audio for episode %d", episode_id)
@@ -261,6 +307,25 @@ def stream_audio(podcast_id: int, episode_id: int):
             raise HTTPException(status_code=404, detail="Audio file not available")
 
     return FileResponse(audio_path, media_type="audio/mpeg", filename=f"{episode_id}.mp3")
+
+@app.get("/podcasts/{podcast_id}/episodes/{episode_id}/chat")
+def get_chat_history(podcast_id: int, episode_id: int):
+    logger.info("Getting chat history for episode %d", episode_id)
+    with get_db() as conn:
+        conn.row_factory = dict_row
+        rows = conn.execute(
+            "SELECT source, message, created_at FROM episode_chat WHERE episode_id = %s ORDER BY id",
+            [episode_id],
+        ).fetchall()
+        return rows
+
+
+@app.delete("/podcasts/{podcast_id}/episodes/{episode_id}/chat", status_code=204)
+def clear_chat_history(podcast_id: int, episode_id: int):
+    logger.info("Clearing chat history for episode %d", episode_id)
+    with get_db() as conn:
+        conn.execute("DELETE FROM episode_chat WHERE episode_id = %s", [episode_id])
+
 
 @app.post("/podcasts/{podcast_id}/episodes/{episode_id}/chat")
 def chat_about_episode(podcast_id: int, episode_id: int, request: ChatRequest):
@@ -283,6 +348,16 @@ def chat_about_episode(podcast_id: int, episode_id: int, request: ChatRequest):
     document_store.load_text(episode["transcript"])
     relevant_chunks = document_store.find_relevant_chunks(request.question)
     answer = llm.generate_response(request.question, relevant_chunks)
+
+    with get_db() as conn:
+        conn.execute(
+            "INSERT INTO episode_chat (episode_id, source, message) VALUES (%s, 'user', %s)",
+            [episode_id, request.question],
+        )
+        conn.execute(
+            "INSERT INTO episode_chat (episode_id, source, message) VALUES (%s, 'assistant', %s)",
+            [episode_id, answer],
+        )
 
     logger.debug("Chat answer for episode %d: %s", episode_id, answer[:100])
     return {"answer": answer}
