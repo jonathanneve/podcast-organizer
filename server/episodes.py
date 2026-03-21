@@ -124,7 +124,7 @@ def analyze_episode(conn: Connection[DictRow], episode_id: int):
 
             # Submit overall summary task
             overall_future = executor.submit(
-                summarize_text, transcript, 50, 200
+                summarize_text, transcript, 500, 10000
             )
 
             # Collect segment results

@@ -30,6 +30,7 @@ interface Episode {
   status: string;
   full_summary: string | null;
   audio_path: string | null;
+  analysis_duration_seconds: number | null;
 }
 
 interface Props {
@@ -39,6 +40,7 @@ interface Props {
 
 export default function EpisodeDetails({ episode, onStatusChange }: Props) {
   const [analyzing, setAnalyzing] = useState(false);
+  const [activeTab, setActiveTab] = useState<"summary" | "topics">("summary");
 
   const audioUrl = `/podcasts/${episode.podcast_id}/episodes/${episode.id}/audio`;
   const isAnalyzed = episode.status === "analyzed" || episode.status === "ready";
@@ -102,7 +104,14 @@ export default function EpisodeDetails({ episode, onStatusChange }: Props) {
           )}
           <div className="ep-title-row">
             <h2 className="ep-title">{episode.title || `Episode ${episode.id}`}</h2>
-            <span className={`ep-status ep-status--${episode.status}`}>
+            <span
+              className={`ep-status ep-status--${episode.status}`}
+              title={
+                episode.analysis_duration_seconds
+                  ? `Analysis took ${Math.floor(episode.analysis_duration_seconds / 60)}m ${episode.analysis_duration_seconds % 60}s`
+                  : undefined
+              }
+            >
               {episode.status}
             </span>
           </div>
@@ -130,11 +139,32 @@ export default function EpisodeDetails({ episode, onStatusChange }: Props) {
       {isAnalyzed ? (
         <div className="bottom-section">
           <div className="summary-panel">
-            <h3>Summary</h3>
-            {episode.full_summary ? (
-              <div className="summary-content">{episode.full_summary}</div>
+            <div className="tab-bar">
+              <button
+                className={`tab${activeTab === "summary" ? " active" : ""}`}
+                onClick={() => setActiveTab("summary")}
+              >
+                Summary
+              </button>
+              <button
+                className={`tab${activeTab === "topics" ? " active" : ""}`}
+                onClick={() => setActiveTab("topics")}
+              >
+                Topics
+              </button>
+            </div>
+            {activeTab === "summary" ? (
+              episode.summary ? (
+                <div className="summary-content">{episode.summary}</div>
+              ) : (
+                <p className="no-summary">No summary available.</p>
+              )
             ) : (
-              <p className="no-summary">No summary available.</p>
+              episode.full_summary ? (
+                <div className="summary-content">{episode.full_summary}</div>
+              ) : (
+                <p className="no-summary">No topics available.</p>
+              )
             )}
           </div>
 

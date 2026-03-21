@@ -44,4 +44,5 @@ class Episode(BaseModel):
     audio_path: str | None = None
     duration_seconds: int | None = None
     status: str = "available"
+    analysis_duration_seconds: int | None = None
     full_summary: str | None = None
