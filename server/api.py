@@ -2,6 +2,8 @@ import asyncio
 import logging
 import os
 import threading
+import json
+import numpy as np
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
@@ -281,7 +283,7 @@ def reset_episode(podcast_id: int, episode_id: int):
             "DELETE FROM episode_chat WHERE episode_id = %s", [episode_id]
         )
         conn.execute(
-            "UPDATE episodes SET status = 'available', transcript = NULL, summary = NULL, audio_path = NULL, duration_seconds = NULL WHERE id = %s",
+            "UPDATE episodes SET status = 'available', transcript = NULL, summary = NULL, audio_path = NULL, duration_seconds = NULL, chunks = NULL, chunk_embeddings = NULL, analysis_duration_seconds = NULL WHERE id = %s",
             [episode_id],
         )
 
@@ -333,7 +335,7 @@ def chat_about_episode(podcast_id: int, episode_id: int, request: ChatRequest):
     with get_db() as conn:
         conn.row_factory = dict_row
         episode = conn.execute(
-            "SELECT transcript FROM episodes WHERE id = %s AND podcast_id = %s",
+            "SELECT transcript, chunks, chunk_embeddings FROM episodes WHERE id = %s AND podcast_id = %s",
             [episode_id, podcast_id],
         ).fetchone()
 
@@ -345,7 +347,14 @@ def chat_about_episode(podcast_id: int, episode_id: int, request: ChatRequest):
             logger.warning("Episode %d of podcast %d has not been analyzed yet", episode_id, podcast_id)
             raise HTTPException(status_code=400, detail="Episode has not been analyzed yet")
 
-    document_store.load_text(episode["transcript"])
+    if not episode["chunks"] or not episode["chunk_embeddings"]:
+        raise HTTPException(status_code=400, detail="Episode embeddings not available, please re-analyze")
+
+    chunks = json.loads(episode["chunks"]) if isinstance(episode["chunks"], str) else episode["chunks"]
+    raw = bytes(episode["chunk_embeddings"])
+    embeddings = np.frombuffer(raw, dtype=np.float32).reshape(len(chunks), -1)
+    document_store.load_precomputed(chunks, embeddings)
+
     relevant_chunks = document_store.find_relevant_chunks(request.question)
     answer = llm.generate_response(request.question, relevant_chunks)
 
