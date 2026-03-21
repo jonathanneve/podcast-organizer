@@ -15,12 +15,16 @@ entity episodes {
     --
     * podcast_id : INTEGER <<FK>>
     * url : TEXT
+    title : TEXT
     description : TEXT
     image_url : TEXT
     summary : TEXT
     transcript : TEXT
     audio_path : TEXT
     duration_seconds : INTEGER
+    chunks : JSONB
+    chunk_embeddings : BYTEA
+    analysis_duration_seconds : INTEGER
     * status : TEXT {available, analyzing, ready}
 }
 
@@ -28,14 +32,24 @@ entity episode_segments {
     * id : SERIAL <<PK>>
     --
     * episode_id : INTEGER <<FK>>
-    * start_time : INTEGER
-    * end_time : INTEGER
+    * segment_order : INTEGER
+    start_time : INTEGER
     transcript : TEXT
-    summary : TEXT
     topic : TEXT
+    summary : TEXT
+}
+
+entity episode_chat {
+    * id : SERIAL <<PK>>
+    --
+    * episode_id : INTEGER <<FK>>
+    * source : TEXT {user, assistant}
+    * message : TEXT
+    created_at : TIMESTAMP
 }
 
 podcasts ||--o{ episodes
 episodes ||--o{ episode_segments
+episodes ||--o{ episode_chat
 
 @enduml
