@@ -122,28 +122,29 @@ def segment_text(text: str, timestamped_segments: list[tuple[float, str]] | None
         })
     return results
 
-_summ_tokenizer = None
-_summ_model = None
+_bart_tokenizer = None
+_bart_model = None
 
-def _get_summarization_model():
-    from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-    global _summ_tokenizer, _summ_model
-    if _summ_tokenizer is None:
-        _summ_tokenizer = AutoTokenizer.from_pretrained("pszemraj/long-t5-tglobal-base-16384-book-summary")
-        _summ_model = AutoModelForSeq2SeqLM.from_pretrained("pszemraj/long-t5-tglobal-base-16384-book-summary")
-    assert _summ_tokenizer is not None and _summ_model is not None
-    return _summ_tokenizer, _summ_model
+def _get_bart_model():
+    from transformers import BartTokenizer, BartForConditionalGeneration
+    global _bart_tokenizer, _bart_model
+    if _bart_tokenizer is None:
+        _bart_tokenizer = BartTokenizer.from_pretrained("philschmid/bart-large-cnn-samsum")
+        _bart_model = BartForConditionalGeneration.from_pretrained("philschmid/bart-large-cnn-samsum")
+    assert _bart_tokenizer is not None and _bart_model is not None
+    return _bart_tokenizer, _bart_model
 
 def summarize_text(full_text: str, min_length = 15, max_length=60):
-    tokenizer, model = _get_summarization_model()
+    tokenizer, model = _get_bart_model()
 
-    inputs = tokenizer(full_text, return_tensors="pt", truncation=True, max_length=16384)
+    inputs = tokenizer(full_text, return_tensors="pt", truncation=True, max_length=1024)
     summary_ids = model.generate(
         inputs["input_ids"],
         max_length=max_length,
         min_length=min_length,
-        num_beams=4,
-        length_penalty=2.0,
+        num_beams=6,
+        length_penalty=1.0,
+        no_repeat_ngram_size=3,
     )
     summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
     return [{"summary_text": summary}]
