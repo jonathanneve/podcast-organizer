@@ -110,36 +110,21 @@ def analyze_episode(conn: Connection[DictRow], episode_id: int):
             segments = segment_text(transcript, timestamped_segments)
             logger.info("Episode %d: segmented into %d topics", episode_id, len(segments))
 
-            # 4. Summarize each segment in parallel threads, plus the overall summary
-            segment_results: list[dict] = [{}] * len(segments)
-            overall_summary = ""
+        # 4. Summarize each segment sequentially (model is not thread-safe)
+        segment_results: list[dict] = []
+        logger.info("Episode %d: summarizing %d segments", episode_id, len(segments))
 
-            logger.info("Episode %d: summarizing %d segments in parallel", episode_id, len(segments))
+        for i, seg in enumerate(segments):
+            segment_results.append(_summarize_segment(seg["text"]))
+            logger.debug("Episode %d: segment %d summarized", episode_id, i)
 
-            # Submit segment summarization tasks
-            segment_futures = {
-                executor.submit(_summarize_segment, seg["text"]): i
-                for i, seg in enumerate(segments)
-            }
-
-            # Submit overall summary task
-            overall_future = executor.submit(
-                summarize_text, transcript, 500, 10000
-            )
-
-            # Collect segment results
-            for future in as_completed(segment_futures):
-                idx = segment_futures[future]
-                segment_results[idx] = future.result()
-                logger.debug("Episode %d: segment %d summarized", episode_id, idx)
-
-            # Collect overall summary
-            overall_result = cast(list[dict], overall_future.result())
-            overall_summary = overall_result[0]["summary_text"] if overall_result else ""
+        # 5. Generate overall summary
+        overall_result = cast(list[dict], summarize_text(transcript, 100, 512))
+        overall_summary = overall_result[0]["summary_text"] if overall_result else ""
 
         logger.info("Episode %d: all summaries complete", episode_id)
 
-        # 5. Pre-compute chat embeddings
+        # 6. Pre-compute chat embeddings
         logger.info("Episode %d: computing chat embeddings", episode_id)
         chunks, chunk_embeddings = _get_document_store().compute_embeddings(transcript)
         chunks_json = json.dumps(chunks)
@@ -147,7 +132,7 @@ def analyze_episode(conn: Connection[DictRow], episode_id: int):
         embeddings_shape = chunk_embeddings.shape
         logger.info("Episode %d: computed %d chunk embeddings", episode_id, len(chunks))
 
-        # 6. Write segments to database
+        # 7. Write segments to database
         for i, (seg, seg_result) in enumerate(zip(segments, segment_results)):
             conn.execute(
                 """INSERT INTO episode_segments (episode_id, segment_order, transcript, topic, summary, start_time)
@@ -155,7 +140,7 @@ def analyze_episode(conn: Connection[DictRow], episode_id: int):
                 [episode_id, i, seg["text"], seg_result["topic"], seg_result["summary"], seg["start_time"]],
             )
 
-        # 7. Update the episode with transcript, summary, and embeddings
+        # 8. Update the episode with transcript, summary, and embeddings
         analysis_duration = int(time.monotonic() - analysis_start)
         conn.execute(
             "UPDATE episodes SET audio_path = %s, transcript = %s, summary = %s, duration_seconds = %s, chunks = %s, chunk_embeddings = %s, analysis_duration_seconds = %s, status = 'ready' WHERE id = %s",
