@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import DOMPurify from "dompurify";
 
 DOMPurify.addHook("afterSanitizeAttributes", (node) => {
@@ -30,6 +30,7 @@ interface Episode {
   status: string;
   full_summary: string | null;
   audio_path: string | null;
+  transcript: string | null;
   analysis_duration_seconds: number | null;
 }
 
@@ -40,7 +41,29 @@ interface Props {
 
 export default function EpisodeDetails({ episode, onStatusChange }: Props) {
   const [analyzing, setAnalyzing] = useState(false);
-  const [activeTab, setActiveTab] = useState<"summary" | "topics">("summary");
+  const [activeTab, setActiveTab] = useState<"summary" | "topics" | "transcript">("summary");
+  const [topHeight, setTopHeight] = useState(33); // percentage
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const onSplitterMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    const container = containerRef.current;
+    if (!container) return;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const rect = container.getBoundingClientRect();
+      const pct = ((moveEvent.clientY - rect.top) / rect.height) * 100;
+      setTopHeight(Math.min(80, Math.max(10, pct)));
+    };
+
+    const onMouseUp = () => {
+      document.removeEventListener("mousemove", onMouseMove);
+      document.removeEventListener("mouseup", onMouseUp);
+    };
+
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+  }, []);
 
   const audioUrl = `/podcasts/${episode.podcast_id}/episodes/${episode.id}/audio`;
   const isAnalyzed = episode.status === "analyzed" || episode.status === "ready";
@@ -96,8 +119,8 @@ export default function EpisodeDetails({ episode, onStatusChange }: Props) {
   };
 
   return (
-    <div className="episode-details-panel">
-      <div className="top-section">
+    <div className="episode-details-panel" ref={containerRef}>
+      <div className="top-section" style={{ height: `${topHeight}%` }}>
         <div className="top-row">
           {episode.image_url && (
             <img src={episode.image_url} alt="" className="ep-image" />
@@ -136,6 +159,8 @@ export default function EpisodeDetails({ episode, onStatusChange }: Props) {
         )}
       </div>
 
+      <div className="splitter" onMouseDown={onSplitterMouseDown} />
+
       {isAnalyzed ? (
         <div className="bottom-section">
           <div className="summary-panel">
@@ -152,6 +177,12 @@ export default function EpisodeDetails({ episode, onStatusChange }: Props) {
               >
                 Topics
               </button>
+              <button
+                className={`tab${activeTab === "transcript" ? " active" : ""}`}
+                onClick={() => setActiveTab("transcript")}
+              >
+                Transcript
+              </button>
             </div>
             {activeTab === "summary" ? (
               episode.summary ? (
@@ -159,11 +190,17 @@ export default function EpisodeDetails({ episode, onStatusChange }: Props) {
               ) : (
                 <p className="no-summary">No summary available.</p>
               )
-            ) : (
+            ) : activeTab === "topics" ? (
               episode.full_summary ? (
                 <div className="summary-content">{episode.full_summary}</div>
               ) : (
                 <p className="no-summary">No topics available.</p>
+              )
+            ) : (
+              episode.transcript ? (
+                <div className="summary-content">{episode.transcript}</div>
+              ) : (
+                <p className="no-summary">No transcript available.</p>
               )
             )}
           </div>
