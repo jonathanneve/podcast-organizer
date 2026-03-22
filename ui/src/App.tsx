@@ -2,32 +2,11 @@ import { useEffect, useState } from "react";
 import DOMPurify from "dompurify";
 import AddPodcastDialog from "./AddPodcastDialog";
 import EpisodeDetails from "./EpisodeDetails";
+import { Podcast, Episode } from "./models";
 import "./App.scss";
 
 function sanitizeHtml(html: string): string {
   return DOMPurify.sanitize(html);
-}
-
-interface Podcast {
-  id: number;
-  url: string;
-  title: string;
-  description: string | null;
-  image_url: string | null;
-  subscribed_at: string | null;
-}
-
-interface Episode {
-  id: number;
-  podcast_id: number;
-  url: string;
-  title: string | null;
-  description: string | null;
-  summary: string | null;
-  image_url: string | null;
-  audio_path: string | null;
-  status: string;
-  full_summary: string | null;
 }
 
 export default function App() {

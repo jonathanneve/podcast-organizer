@@ -17,22 +17,8 @@ function linkifyAndSanitize(html: string): string {
   );
 }
 import ChatPanel from "./ChatPanel";
+import { Episode } from "./models";
 import "./EpisodeDetails.scss";
-
-interface Episode {
-  id: number;
-  podcast_id: number;
-  url: string;
-  title: string | null;
-  description: string | null;
-  summary: string | null;
-  image_url: string | null;
-  status: string;
-  full_summary: string | null;
-  audio_path: string | null;
-  transcript: string | null;
-  analysis_duration_seconds: number | null;
-}
 
 interface Props {
   episode: Episode;
