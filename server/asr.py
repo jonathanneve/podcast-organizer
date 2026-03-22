@@ -25,15 +25,14 @@ def transcribe_audio_file(path, result_path):
         model_size,
         device=device,
         compute_type=compute_type,
-        num_workers=4,  # Use 1 worker to avoid multiprocessing issues on macOS
+        num_workers=4,
     )
  
-    # Transcribe (VAD disabled for better MP3 compatibility)
+    # Transcribe
     segments, info = model.transcribe(
         path,
-        task="transcribe",  # Use "translate" to convert to English
+        task="transcribe", 
         beam_size=5,  # Beam search size (lower = faster, higher = more accurate)
-        # vad_filter=False,  # Disabled for MP3 compatibility
     )
 
     # Combine all segments into full text
