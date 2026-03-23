@@ -122,29 +122,107 @@ def segment_text(text: str, timestamped_segments: list[tuple[float, str]] | None
         })
     return results
 
-_bart_tokenizer = None
-_bart_model = None
+# -- BART summarization (commented out for Qwen2 experiment) --
+# _bart_tokenizer = None
+# _bart_model = None
+#
+# def _get_bart_model():
+#     from transformers import BartTokenizer, BartForConditionalGeneration
+#     global _bart_tokenizer, _bart_model
+#     if _bart_tokenizer is None:
+#         _bart_tokenizer = BartTokenizer.from_pretrained("philschmid/bart-large-cnn-samsum")
+#         _bart_model = BartForConditionalGeneration.from_pretrained("philschmid/bart-large-cnn-samsum")
+#     assert _bart_tokenizer is not None and _bart_model is not None
+#     return _bart_tokenizer, _bart_model
 
-def _get_bart_model():
-    from transformers import BartTokenizer, BartForConditionalGeneration
-    global _bart_tokenizer, _bart_model
-    if _bart_tokenizer is None:
-        _bart_tokenizer = BartTokenizer.from_pretrained("philschmid/bart-large-cnn-samsum")
-        _bart_model = BartForConditionalGeneration.from_pretrained("philschmid/bart-large-cnn-samsum")
-    assert _bart_tokenizer is not None and _bart_model is not None
-    return _bart_tokenizer, _bart_model
+_summary_pipe = None
 
-def summarize_text(full_text: str, min_length = 15, max_length=60):
-    tokenizer, model = _get_bart_model()
+def _get_summary_pipe():
+    """Lazy-load the Qwen2 LLM pipeline for summarization (shared with chatbot)."""
+    global _summary_pipe
+    if _summary_pipe is None:
+        from chatbot import LLM_MODEL
+        from transformers import AutoTokenizer, AutoModelForCausalLM
+        import torch
 
-    inputs = tokenizer(full_text, return_tensors="pt", truncation=True, max_length=1024)
-    summary_ids = model.generate(
-        inputs["input_ids"],
-        max_length=max_length,
-        min_length=min_length,
-        num_beams=6,
-        length_penalty=1.0,
-        no_repeat_ngram_size=3,
+        tokenizer = AutoTokenizer.from_pretrained(LLM_MODEL, trust_remote_code=True)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        model = AutoModelForCausalLM.from_pretrained(
+            LLM_MODEL,
+            torch_dtype=torch.float32,
+            trust_remote_code=True,
+            low_cpu_mem_usage=True,
+        ).to("cpu")
+
+        _summary_pipe = pipeline(
+            "text-generation",
+            model=model,
+            tokenizer=tokenizer,
+        )
+    return _summary_pipe
+
+SUMMARY_PROMPT = """Summarize the following podcast transcript in {style}. Only output the summary, nothing else.
+
+Transcript:
+---
+{text}
+---
+
+Summary:"""
+
+BLOCK_SIZE = 12000
+
+def _generate_summary(pipe, text: str, style: str, max_tokens: int) -> str:
+    """Run a single summarization prompt through the LLM pipeline."""
+    prompt = SUMMARY_PROMPT.format(style=style, text=text)
+    messages = [{"role": "user", "content": prompt}]
+
+    outputs = pipe(
+        messages,
+        max_new_tokens=max_tokens,
+        temperature=0.3,
+        top_p=0.9,
+        do_sample=True,
+        pad_token_id=pipe.tokenizer.eos_token_id,
+        return_full_text=False,
     )
-    summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+
+    raw = outputs[0] if isinstance(outputs, list) else outputs
+    response = raw["generated_text"]
+    if isinstance(response, list):
+        response = response[-1].get("content", str(response))
+
+    return response.strip()
+
+def summarize_text(full_text: str, min_length=15, max_length=60):
+    pipe = _get_summary_pipe()
+
+    # Choose style based on requested length
+    if max_length <= 20:
+        style = "one short phrase (5-10 words)"
+    elif max_length <= 80:
+        style = "1-2 concise sentences"
+    else:
+        style = "a concise summary of 8-12 sentences. Do not exceed 12 sentences"
+
+    # Break input into blocks and summarize each one
+    blocks = [full_text[i:i + BLOCK_SIZE] for i in range(0, len(full_text), BLOCK_SIZE)]
+
+    if len(blocks) == 1:
+        # Short text, summarize directly
+        summary = _generate_summary(pipe, blocks[0], style, max_tokens=max_length)
+    else:
+        # Summarize each block individually
+        block_summaries = []
+        for i, block in enumerate(blocks):
+            block_summary = _generate_summary(pipe, block, "a short paragraph (3-5 sentences)", max_tokens=200)
+            block_summaries.append(block_summary)
+
+        # Combine block summaries and produce a final summary
+        combined = "\n".join(block_summaries)
+        result = summarize_text(combined, min_length=min_length, max_length=max_length)
+        summary = result[0]["summary_text"]
+
     return [{"summary_text": summary}]
