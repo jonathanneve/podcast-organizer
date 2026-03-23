@@ -4,6 +4,8 @@ import nltk
 import numpy as np
 from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
+from textsplit.tools import get_penalty, get_segments
+from textsplit.algorithm import split_optimal
 from transformers import pipeline
 from faster_whisper import WhisperModel
 
@@ -96,22 +98,21 @@ def segment_text(text: str, timestamped_segments: list[tuple[float, str]] | None
     embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
     embeddings = embedding_model.encode(sentences)
 
-    # We can now figure out the topic boundaries by calculating the average embeddings
-    # across a window of consecutive sentences, and then calculating the cosine similarity of pairs
-    # of such windows
-    window_size = 8
-    threshold = 0.15
+    # Use textsplit's optimal segmentation algorithm to find topic boundaries.
+    # It uses dynamic programming to maximize segment coherence given a penalty
+    # that controls granularity. Aim for ~8-12 broad topics.
+    target_segments = min(12, max(2, len(sentences) // 200))
+    avg_segment_len = len(sentences) // target_segments
+    penalty = get_penalty([embeddings], avg_segment_len)
+    optimal_splits = split_optimal(embeddings, penalty)
+    segment_groups = get_segments(sentences, optimal_splits)
+
+    # Convert textsplit output to boundary indices
     boundaries = [0]
-    for i in range(0, len(sentences) - window_size * 2):
-        window1 = embeddings[i : i + window_size].mean(axis=0)
-        window2 = embeddings[i + window_size : i + 2 * window_size].mean(axis=0)
-        similarity = cosine_similarity(np.array([window1]), np.array([window2]))[0][0]
-
-        if similarity < threshold:
-            boundaries.append(i + window_size)
-
-    # Add last sentence as the final boundary
-    boundaries.append(len(sentences))
+    pos = 0
+    for group in segment_groups:
+        pos += len(group)
+        boundaries.append(pos)
 
     # Group up boundaries into a list of segments with text and start time for each
     segments_boundaries = zip(boundaries, boundaries[1:])
@@ -173,6 +174,41 @@ Transcript:
 
 Summary:"""
 
+TITLE_PROMPT = """What is the main topic of this podcast excerpt? Respond with only a short title (3-7 words). Do not use quotes or punctuation.
+
+Excerpt:
+---
+{text}
+---
+
+Title:"""
+
+def generate_topic_title(text: str) -> str:
+    """Generates a short topic title for a text segment using the LLM."""
+    pipe = _get_summary_pipe()
+    # Use first 2000 chars — enough context for a title
+    truncated = text[:2000]
+    prompt = TITLE_PROMPT.format(text=truncated)
+    messages = [{"role": "user", "content": prompt}]
+
+    outputs = pipe(
+        messages,
+        max_new_tokens=20,
+        max_length=None,
+        temperature=0.3,
+        top_p=0.9,
+        do_sample=True,
+        pad_token_id=pipe.tokenizer.eos_token_id,
+        return_full_text=False,
+    )
+
+    raw = outputs[0] if isinstance(outputs, list) else outputs
+    response = raw["generated_text"]
+    if isinstance(response, list):
+        response = response[-1].get("content", str(response))
+
+    return response.strip().strip('"').strip("'")
+
 BLOCK_SIZE = 12000
 
 def _generate_summary(pipe, text: str, style: str, max_tokens: int) -> str:
@@ -183,6 +219,7 @@ def _generate_summary(pipe, text: str, style: str, max_tokens: int) -> str:
     outputs = pipe(
         messages,
         max_new_tokens=max_tokens,
+        max_length=None,
         temperature=0.3,
         top_p=0.9,
         do_sample=True,
@@ -201,9 +238,7 @@ def summarize_text(full_text: str, min_length=15, max_length=60):
     pipe = _get_summary_pipe()
 
     # Choose style based on requested length
-    if max_length <= 30:
-        style = "a single short topic title (3-7 words, no full sentences)"
-    elif max_length <= 80:
+    if max_length <= 120:
         style = "1-2 concise sentences"
     else:
         style = "a concise summary of 8-12 sentences. Do not exceed 12 sentences"

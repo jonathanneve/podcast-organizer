@@ -9,7 +9,7 @@ import numpy as np
 from psycopg import Connection
 from psycopg.rows import DictRow
 from rss import download_episode, get_recent_episodes
-from pipeline import segment_text, summarize_text, transcribe_audio_file
+from pipeline import generate_topic_title, segment_text, summarize_text, transcribe_audio_file
 from chatbot import DocumentStore
 
 _document_store: DocumentStore | None = None
@@ -66,11 +66,9 @@ def _download_and_transcribe(audio_url: str, episode_id: int) -> tuple[str, str,
 
 
 def _summarize_segment(segment_text_content: str) -> dict:
-    """Generates a topic description and summary for a single segment."""
-    topic_result = cast(list[dict], summarize_text(segment_text_content, min_length=3, max_length=30))
+    """Generates a topic title and summary for a single segment."""
+    topic = generate_topic_title(segment_text_content)
     summary_result = cast(list[dict], summarize_text(segment_text_content, min_length=30, max_length=120))
-
-    topic = topic_result[0]["summary_text"] if topic_result else "Unknown topic"
     summary = summary_result[0]["summary_text"] if summary_result else ""
 
     return {"topic": topic, "summary": summary}
