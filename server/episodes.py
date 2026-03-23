@@ -67,7 +67,7 @@ def _download_and_transcribe(audio_url: str, episode_id: int) -> tuple[str, str,
 
 def _summarize_segment(segment_text_content: str) -> dict:
     """Generates a topic description and summary for a single segment."""
-    topic_result = cast(list[dict], summarize_text(segment_text_content, min_length=3, max_length=15))
+    topic_result = cast(list[dict], summarize_text(segment_text_content, min_length=3, max_length=30))
     summary_result = cast(list[dict], summarize_text(segment_text_content, min_length=30, max_length=120))
 
     topic = topic_result[0]["summary_text"] if topic_result else "Unknown topic"
@@ -106,17 +106,17 @@ def analyze_episode(conn: Connection[DictRow], episode_id: int):
             audio_path, transcript, duration_seconds, timestamped_segments = transcribe_future.result()
             logger.info("Episode %d: transcription complete (%d characters)", episode_id, len(transcript))
 
-            # 3. Segment the transcript into topics (temporarily disabled)
-            # segments = segment_text(transcript, timestamped_segments)
-            # logger.info("Episode %d: segmented into %d topics", episode_id, len(segments))
+            # 3. Segment the transcript into topics
+            segments = segment_text(transcript, timestamped_segments)
+            logger.info("Episode %d: segmented into %d topics", episode_id, len(segments))
 
-        # 4. Summarize each segment sequentially (temporarily disabled)
-        # segment_results: list[dict] = []
-        # logger.info("Episode %d: summarizing %d segments", episode_id, len(segments))
-        #
-        # for i, seg in enumerate(segments):
-        #     segment_results.append(_summarize_segment(seg["text"]))
-        #     logger.debug("Episode %d: segment %d summarized", episode_id, i)
+        # 4. Summarize each segment sequentially (model is not thread-safe)
+        segment_results: list[dict] = []
+        logger.info("Episode %d: summarizing %d segments", episode_id, len(segments))
+
+        for i, seg in enumerate(segments):
+            segment_results.append(_summarize_segment(seg["text"]))
+            logger.debug("Episode %d: segment %d summarized", episode_id, i)
 
         # 5. Generate overall summary
         overall_result = cast(list[dict], summarize_text(transcript, 100, 768))
@@ -132,13 +132,13 @@ def analyze_episode(conn: Connection[DictRow], episode_id: int):
         embeddings_shape = chunk_embeddings.shape
         logger.info("Episode %d: computed %d chunk embeddings", episode_id, len(chunks))
 
-        # 7. Write segments to database (temporarily disabled)
-        # for i, (seg, seg_result) in enumerate(zip(segments, segment_results)):
-        #     conn.execute(
-        #         """INSERT INTO episode_segments (episode_id, segment_order, transcript, topic, summary, start_time)
-        #            VALUES (%s, %s, %s, %s, %s, %s)""",
-        #         [episode_id, i, seg["text"], seg_result["topic"], seg_result["summary"], seg["start_time"]],
-        #     )
+        # 7. Write segments to database
+        for i, (seg, seg_result) in enumerate(zip(segments, segment_results)):
+            conn.execute(
+                """INSERT INTO episode_segments (episode_id, segment_order, transcript, topic, summary, start_time)
+                   VALUES (%s, %s, %s, %s, %s, %s)""",
+                [episode_id, i, seg["text"], seg_result["topic"], seg_result["summary"], seg["start_time"]],
+            )
 
         # 8. Update the episode with transcript, summary, and embeddings
         analysis_duration = int(time.monotonic() - analysis_start)

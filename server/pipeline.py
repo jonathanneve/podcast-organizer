@@ -95,11 +95,12 @@ def segment_text(text: str, timestamped_segments: list[tuple[float, str]] | None
     # For that, we use all-MiniLM-L6-v2, a local pre-trained sentence embedding model
     embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
     embeddings = embedding_model.encode(sentences)
+
     # We can now figure out the topic boundaries by calculating the average embeddings
     # across a window of consecutive sentences, and then calculating the cosine similarity of pairs
     # of such windows
-    window_size = 5
-    threshold = 0.2
+    window_size = 8
+    threshold = 0.15
     boundaries = [0]
     for i in range(0, len(sentences) - window_size * 2):
         window1 = embeddings[i : i + window_size].mean(axis=0)
@@ -107,7 +108,7 @@ def segment_text(text: str, timestamped_segments: list[tuple[float, str]] | None
         similarity = cosine_similarity(np.array([window1]), np.array([window2]))[0][0]
 
         if similarity < threshold:
-            boundaries.append(i)
+            boundaries.append(i + window_size)
 
     # Add last sentence as the final boundary
     boundaries.append(len(sentences))
@@ -200,8 +201,8 @@ def summarize_text(full_text: str, min_length=15, max_length=60):
     pipe = _get_summary_pipe()
 
     # Choose style based on requested length
-    if max_length <= 20:
-        style = "one short phrase (5-10 words)"
+    if max_length <= 30:
+        style = "a single short topic title (3-7 words, no full sentences)"
     elif max_length <= 80:
         style = "1-2 concise sentences"
     else:
